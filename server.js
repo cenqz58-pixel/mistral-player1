@@ -25,31 +25,21 @@ app.get('/api/get-m3u', async (req, res) => {
   }
 
   try {
-    // Exakter User-Agent von Smart IPTV v3.0.103
     const response = await fetch(targetUrl, {
+      method: 'GET',
       headers: {
         'User-Agent': 'SmartIPTV/3.0.103 (TizenOS; SmartTV)',
         'Accept': '*/*',
-        'Connection': 'keep-alive'
+        'Accept-Language': 'de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Cache-Control': 'no-cache'
       }
     });
 
     if (!response.ok) {
-      // Notfall-Fallback mit alter SmartIPTV-Schreibweise
-      const fallbackResponse = await fetch(targetUrl, {
-        headers: {
-          'User-Agent': 'SIPTV/3.0.103',
-          'Accept': '*/*'
-        }
+      // Zeigt uns genau an, welchen Fehler der IPTV-Anbieter zurückgibt
+      return res.status(response.status).json({ 
+        error: `IPTV-Anbieter antwortet mit Status ${response.status} (${response.statusText})` 
       });
-
-      if (!fallbackResponse.ok) {
-        throw new Error(`Provider verweigert Zugriff (HTTP ${fallbackResponse.status})`);
-      }
-
-      const textFallback = await fallbackResponse.text();
-      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-      return res.send(textFallback);
     }
 
     const m3uText = await response.text();
@@ -58,7 +48,7 @@ app.get('/api/get-m3u', async (req, res) => {
 
   } catch (err) {
     console.error("Proxy-Fehler:", err.message);
-    res.status(500).json({ error: "M3U-Liste konnte vom Provider nicht abgerufen werden." });
+    res.status(500).json({ error: "Netzwerkfehler zum IPTV-Server: " + err.message });
   }
 });
 
