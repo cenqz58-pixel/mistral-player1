@@ -98,7 +98,6 @@
     background: #000; display: block; 
   }
 
-  /* Bildformate */
   #video.fmt-169  { object-fit: contain; }
   #video.fmt-zoom { object-fit: cover; }
   #video.fmt-43   { object-fit: contain; width: 75vw; left: 12.5vw; }
@@ -130,22 +129,24 @@
   .channel {
     display: flex; align-items: center; gap: 12px;
     padding: 10px 12px; border-radius: 8px; cursor: pointer; color: var(--text);
-    margin-bottom: 4px;
+    margin-bottom: 4px; user-select: none;
   }
   .channel-logo {
-    width: 36px; height: 36px; border-radius: 6px; object-fit: contain; background: rgba(255,255,255,0.05); flex-shrink: 0;
+    width: 40px; height: 40px; border-radius: 6px; object-fit: contain; 
+    background: rgba(255,255,255,0.08); flex-shrink: 0; display: flex;
+    align-items: center; justify-content: center; font-size: 14px; font-weight: bold;
   }
   .channel-info { min-width: 0; flex: 1; }
   .channel .name { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .channel .epg-preview { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   
-  .channel.focus {
+  .channel.focus, .channel:hover {
     background: linear-gradient(90deg, rgba(108,92,231,0.9), rgba(108,92,231,0.3) 85%);
     border-left: 4px solid #00cec9;
   }
   .channel.playing .name::after { content: "  ▶"; font-size: 12px; color: #00cec9; }
 
-  /* Infobalken unten bei Senderwechsel */
+  /* Infobalken unten */
   #infoBar {
     position: absolute; left: 40px; right: 40px; bottom: 30px; z-index: 8;
     padding: 18px 24px; border-radius: 14px;
@@ -211,75 +212,16 @@
 
 <div id="toast"></div>
 
-<!-- MiniHLS Engine -->
-<script>
-class MiniHLS {
-  constructor(video, cb) {
-    this.video = video; this.cb = cb || {}; this.destroyed = false;
-    this.segments = []; this.appended = new Set(); this.ms = null; this.sb = null;
-  }
-  async fetchText(url) { const res = await fetch(url); if (!res.ok) throw new Error("HTTP " + res.status); return res.text(); }
-  async fetchBuf(url) { const res = await fetch(url); if (!res.ok) throw new Error("HTTP " + res.status); return res.arrayBuffer(); }
-  parseMedia(text, base) {
-    const segs = [];
-    for (const raw of text.split(/\r?\n/)) {
-      const line = raw.trim();
-      if (line && !line.startsWith("#")) segs.push({ url: new URL(line, base).href });
-    }
-    this.segments = segs; return segs;
-  }
-  async load(url) {
-    const text = await this.fetchText(url); if (this.destroyed) return;
-    if (/#EXT-X-STREAM-INF/i.test(text)) {
-      const lines = text.split(/\r?\n/);
-      for (let i = 0; i < lines.length; i++) {
-        if (lines[i].startsWith("#EXT-X-STREAM-INF")) {
-          await this.load(new URL(lines[i+1].trim(), url).href); return;
-        }
-      }
-    }
-    this.parseMedia(text, url); await this.setupMSE();
-  }
-  setupMSE() {
-    return new Promise((resolve, reject) => {
-      this.ms = new MediaSource(); this.video.src = URL.createObjectURL(this.ms);
-      this.ms.addEventListener("sourceopen", async () => {
-        try {
-          this.sb = this.ms.addSourceBuffer('video/mp4; codecs="avc1.42E01E, mp4a.40.2"');
-          this.appendLoop(); resolve();
-        } catch (e) { reject(e); }
-      }, { once: true });
-    });
-  }
-  async appendLoop() {
-    if (this.destroyed) return;
-    const seg = this.segments.find(s => !this.appended.has(s.url));
-    if (!seg) return;
-    try {
-      const data = await this.fetchBuf(seg.url);
-      this.sb.appendBuffer(data); this.appended.add(seg.url);
-      this.sb.addEventListener("updateend", () => this.appendLoop(), { once: true });
-    } catch (e) { if (this.cb.onError) this.cb.onError("Stream-Fehler"); }
-  }
-  destroy() {
-    this.destroyed = true;
-    try { if (this.ms && this.ms.readyState === "open") this.ms.endOfStream(); } catch (e) {}
-  }
-}
-</script>
-
 <script>
 (function () {
   "use strict";
 
-  // WICHTIG: Deine Render oder Server-URL hier eintragen
   const SERVER_URL = "https://mistral-player1.onrender.com";
 
   const LS_KEY = "m3uTvPlayer.lastLogin";
   let channels = [];
   let activeIndex = -1;
   let focusIndex = 0;
-  let currentEngine = null;
   let infoTimeout = null;
 
   const formats = [
@@ -311,6 +253,7 @@ class MiniHLS {
     $("loginInput").focus();
   });
 
+  // Tastatur & Fernbedienung
   document.addEventListener("keydown", (e) => {
     const isPlayerVisible = !$("player").hidden;
 
@@ -349,12 +292,12 @@ class MiniHLS {
         }
         break;
 
-      case 10009: // RETURN / ZURÜCK
+      case 10009: // RETURN / ZURÜCK (Samsung TV) / ESC auf PC
+      case 27:
         if (isPlayerVisible) {
           if (panel.classList.contains("show")) {
             showPanel(false);
           } else {
-            if (currentEngine) { currentEngine.destroy(); currentEngine = null; }
             video.pause();
             video.removeAttribute("src");
             video.load();
@@ -366,6 +309,13 @@ class MiniHLS {
           try { tizen.application.getCurrentApplication().exit(); } catch (e) {}
         }
         break;
+    }
+  });
+
+  // Mauszeiger-Öffnen des Panels bei Bewegung
+  document.addEventListener("mousemove", (e) => {
+    if (!$("player").hidden && e.clientX < 100) {
+      showPanel(true);
     }
   });
 
@@ -399,10 +349,10 @@ class MiniHLS {
     if (input.length === 5 && !input.startsWith("http")) {
       showStatus("Server wird aufgeweckt & Code abgefragt...");
       try {
-        const res = await fetch(`${SERVER_URL}/api/get-m3u?code=${input}`);
-        if (!res.ok) throw new Error("Ungültiger Code");
+        const res = await fetch(`${SERVER_URL}/api/get-m3u?code=${encodeURIComponent(input)}`);
+        if (!res.ok) throw new Error("Code nicht gefunden");
         const data = await res.json();
-        m3uUrl = data.url || data.m3u;
+        m3uUrl = data.url;
       } catch (err) {
         hideStatus();
         $("homeError").textContent = "Fehler: Code nicht gefunden oder Server offline.";
@@ -413,14 +363,17 @@ class MiniHLS {
     showStatus("Senderliste wird geladen...");
 
     fetch(m3uUrl)
-      .then(r => r.text())
+      .then(r => {
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return r.text();
+      })
       .then(text => {
         showStatus("Senderliste wird verarbeitet...");
         setTimeout(() => {
           channels = parseM3U(text);
           hideStatus();
           if (!channels.length) {
-            $("homeError").textContent = "Keine Sender in der Liste gefunden.";
+            $("homeError").textContent = "Keine gültigen Sender in der M3U gefunden.";
             return;
           }
           startPlayer();
@@ -428,7 +381,7 @@ class MiniHLS {
       })
       .catch(err => {
         hideStatus();
-        $("homeError").textContent = "Fehler beim Laden der M3U Playlist.";
+        $("homeError").textContent = "M3U konnte nicht geladen werden (CORS oder URL-Fehler).";
       });
   }
 
@@ -474,11 +427,17 @@ class MiniHLS {
 
   function renderList() {
     const listEl = $("channelList");
+    
     listEl.innerHTML = channels.map((c, i) => {
       const idx = i + 1;
-      const logoHtml = c.logo ? `<img class="channel-logo" src="${c.logo}" onerror="this.style.display='none'"/>` : `<div class="channel-logo"></div>`;
+      const initial = c.name ? c.name.charAt(0).toUpperCase() : "TV";
+      
+      const logoHtml = c.logo 
+        ? `<img class="channel-logo" src="${c.logo}" onerror="this.onerror=null; this.outerHTML='<div class=\\'channel-logo\\'>${initial}</div>';"/>` 
+        : `<div class="channel-logo">${initial}</div>`;
+
       return `
-        <div class="channel ${idx === focusIndex ? "focus" : ""} ${i === activeIndex ? "playing" : ""}">
+        <div class="channel ${idx === focusIndex ? "focus" : ""} ${i === activeIndex ? "playing" : ""}" data-index="${i}">
           ${logoHtml}
           <div class="channel-info">
             <div class="name">${c.name}</div>
@@ -487,6 +446,16 @@ class MiniHLS {
         </div>
       `;
     }).join("");
+
+    // Event-Listener für Maus-Klicks auf PCs hinzufügen
+    const channelEls = listEl.querySelectorAll(".channel");
+    channelEls.forEach(el => {
+      el.addEventListener("click", () => {
+        const index = parseInt(el.getAttribute("data-index"), 10);
+        focusIndex = index + 1;
+        selectAndPlay(index);
+      });
+    });
   }
 
   function setFocus(i) {
@@ -511,13 +480,14 @@ class MiniHLS {
     }
   }
 
-  async function selectAndPlay(i) {
+  function selectAndPlay(i) {
     showPanel(false);
     activeIndex = i;
     const ch = channels[i];
 
     $("infoName").textContent = ch.name;
     $("infoEpg").textContent = ch.epg;
+    
     if (ch.logo) {
       $("infoLogo").src = ch.logo;
       $("infoLogo").style.display = "block";
@@ -531,23 +501,15 @@ class MiniHLS {
     if (infoTimeout) clearTimeout(infoTimeout);
     infoTimeout = setTimeout(() => infoBar.classList.remove("show"), 5000);
 
-    if (currentEngine) { currentEngine.destroy(); currentEngine = null; }
-
-    const streamUrl = ch.url.toLowerCase();
-    const isDirectStream = streamUrl.includes(".mpeg") || streamUrl.includes(".ts") || streamUrl.includes(".mkv") || streamUrl.includes(".mp4") || !streamUrl.includes(".m3u8");
-
-    if (isDirectStream) {
-      // Direktes Abspielen für .mpeg, .ts und normale HTTP IPTV Streams
-      video.src = ch.url;
-      video.play().catch(err => {
+    // Stream abspielen
+    video.pause();
+    video.src = ch.url;
+    video.load();
+    
+    const playPromise = video.play();
+    if (playPromise !== undefined) {
+      playPromise.catch(err => {
         toast("Stream kann nicht wiedergegeben werden.");
-      });
-    } else {
-      // HLS Engine für .m3u8 Aufrufe
-      video.src = ch.url;
-      video.play().catch(() => {
-        currentEngine = new MiniHLS(video, { onError: (m) => toast(m) });
-        currentEngine.load(ch.url).then(() => video.play()).catch(() => toast("HLS-Fehler beim Abspielen"));
       });
     }
   }
