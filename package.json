@@ -1,5 +1,5 @@
 {
-  "name": "mistral-player-server",
+  "name": "mistral-player1",
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
