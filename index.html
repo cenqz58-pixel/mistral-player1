@@ -480,39 +480,49 @@
     }
   }
 
-  function selectAndPlay(i) {
-    showPanel(false);
-    activeIndex = i;
-    const ch = channels[i];
+function selectAndPlay(i) {
+  showPanel(false);
+  activeIndex = i;
+  const ch = channels[i];
 
-    $("infoName").textContent = ch.name;
-    $("infoEpg").textContent = ch.epg;
-    
-    if (ch.logo) {
-      $("infoLogo").src = ch.logo;
-      $("infoLogo").style.display = "block";
-    } else {
-      $("infoLogo").style.display = "none";
-    }
-
-    const infoBar = $("infoBar");
-    infoBar.classList.add("show");
-    
-    if (infoTimeout) clearTimeout(infoTimeout);
-    infoTimeout = setTimeout(() => infoBar.classList.remove("show"), 5000);
-
-    // Stream abspielen
-    video.pause();
-    video.src = ch.url;
-    video.load();
-    
-    const playPromise = video.play();
-    if (playPromise !== undefined) {
-      playPromise.catch(err => {
-        toast("Stream kann nicht wiedergegeben werden.");
-      });
-    }
+  $("infoName").textContent = ch.name;
+  $("infoEpg").textContent = ch.epg;
+  
+  if (ch.logo) {
+    $("infoLogo").src = ch.logo;
+    $("infoLogo").style.display = "block";
+  } else {
+    $("infoLogo").style.display = "none";
   }
+
+  const infoBar = $("infoBar");
+  infoBar.classList.add("show");
+  
+  if (infoTimeout) clearTimeout(infoTimeout);
+  infoTimeout = setTimeout(() => infoBar.classList.remove("show"), 5000);
+
+  // Stream-Wiedergabe zurücksetzen & vorbereiten
+  video.pause();
+  video.removeAttribute("src");
+  
+  // Mime-Type für MPEG/TS setzen, falls benötigt
+  if (ch.url.includes(".mpeg") || ch.url.includes(".ts")) {
+    video.type = "video/mp2t";
+  } else {
+    video.removeAttribute("type");
+  }
+
+  video.src = ch.url;
+  video.load();
+  
+  const playPromise = video.play();
+  if (playPromise !== undefined) {
+    playPromise.catch(err => {
+      console.warn("Wiedergabefehler:", err);
+      toast("Stream-Wiedergabe nicht möglich (MPEG/TS wird vom PC-Browser oft blockiert).");
+    });
+  }
+}
 
   function toast(msg) {
     const t = $("toast");
