@@ -339,50 +339,49 @@
     $("loaderStatus").hidden = true;
   }
 
-  async function handleLogin() {
+async function handleLogin() {
     const input = $("loginInput").value.trim();
     if (!input) { $("homeError").textContent = "Bitte Code oder URL eingeben."; return; }
     localStorage.setItem(LS_KEY, input);
 
-    let m3uUrl = input;
+    showStatus("Senderliste wird über Render geladen...");
 
-    if (input.length === 5 && !input.startsWith("http")) {
-      showStatus("Server wird aufgeweckt & Code abgefragt...");
-      try {
-        const res = await fetch(`${SERVER_URL}/api/get-m3u?code=${encodeURIComponent(input)}`);
-        if (!res.ok) throw new Error("Code nicht gefunden");
-        const data = await res.json();
-        m3uUrl = data.url;
-      } catch (err) {
-        hideStatus();
-        $("homeError").textContent = "Fehler: Code nicht gefunden oder Server offline.";
-        return;
+    try {
+      let requestUrl = input;
+      
+      // Wenn 5-stelliger Code: Direkt über deinen Render-Proxy abrufen
+      if (input.length === 5 && !input.startsWith("http")) {
+        requestUrl = `${SERVER_URL}/api/get-m3u?code=${encodeURIComponent(input)}`;
       }
-    }
 
-    showStatus("Senderliste wird geladen...");
+      const res = await fetch(requestUrl);
+      if (!res.ok) {
+        throw new Error("Fehler beim Abrufen der Liste");
+      }
 
-    fetch(m3uUrl)
-      .then(r => {
-        if (!r.ok) throw new Error("HTTP " + r.status);
-        return r.text();
-      })
-      .then(text => {
-        showStatus("Senderliste wird verarbeitet...");
-        setTimeout(() => {
-          channels = parseM3U(text);
-          hideStatus();
-          if (!channels.length) {
-            $("homeError").textContent = "Keine gültigen Sender in der M3U gefunden.";
-            return;
-          }
-          startPlayer();
-        }, 50);
-      })
-      .catch(err => {
+      const text = await res.text();
+
+      if (!text || !text.includes("#EXTM3U")) {
+        throw new Error("Ungueltiges M3U Format erhalten");
+      }
+
+      showStatus("Senderliste wird verarbeitet...");
+      
+      setTimeout(() => {
+        channels = parseM3U(text);
         hideStatus();
-        $("homeError").textContent = "M3U konnte nicht geladen werden (CORS oder URL-Fehler).";
-      });
+        if (!channels.length) {
+          $("homeError").textContent = "Keine Sender in der Liste gefunden.";
+          return;
+        }
+        startPlayer();
+      }, 50);
+
+    } catch (err) {
+      hideStatus();
+      console.error(err);
+      $("homeError").textContent = "Fehler: Liste konnte nicht geladen werden (CORS/Server-Fehler).";
+    }
   }
 
   function parseM3U(text) {
