@@ -25,26 +25,40 @@ app.get('/api/get-m3u', async (req, res) => {
   }
 
   try {
-    // Render laedt die M3U-Datei direkt vom IPTV-Provider herunter
+    // Exakter User-Agent von Smart IPTV v3.0.103
     const response = await fetch(targetUrl, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) VLC/3.0.18'
+        'User-Agent': 'SmartIPTV/3.0.103 (TizenOS; SmartTV)',
+        'Accept': '*/*',
+        'Connection': 'keep-alive'
       }
     });
 
     if (!response.ok) {
-      throw new Error(`IPTV Server Antwort: ${response.status}`);
+      // Notfall-Fallback mit alter SmartIPTV-Schreibweise
+      const fallbackResponse = await fetch(targetUrl, {
+        headers: {
+          'User-Agent': 'SIPTV/3.0.103',
+          'Accept': '*/*'
+        }
+      });
+
+      if (!fallbackResponse.ok) {
+        throw new Error(`Provider verweigert Zugriff (HTTP ${fallbackResponse.status})`);
+      }
+
+      const textFallback = await fallbackResponse.text();
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      return res.send(textFallback);
     }
 
     const m3uText = await response.text();
-    
-    // Sendet den Inhalt sauber an den Smart TV zurück
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     res.send(m3uText);
 
   } catch (err) {
     console.error("Proxy-Fehler:", err.message);
-    res.status(500).json({ error: "M3U-Liste konnte nicht vom Provider geladen werden." });
+    res.status(500).json({ error: "M3U-Liste konnte vom Provider nicht abgerufen werden." });
   }
 });
 
