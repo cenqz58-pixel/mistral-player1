@@ -4,525 +4,266 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>M3U TV Player</title>
+<script src="$WEBAPIS/webapis/webapis.js"></script>
+
 <style>
   :root {
     font-family: -apple-system, "Segoe UI", Roboto, Inter, system-ui, sans-serif;
     --accent: #6c5ce7;
+    --accent-hover: #5a4bcf;
     --text: #f2f3f7;
     --muted: #9aa0b4;
+    --bg-dark: rgba(15, 17, 23, 0.92);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { height: 100%; background: #000; }
-  body { color: var(--text); overflow: hidden; }
+  html, body { 
+    width: 100vw; height: 100vh; 
+    background: #000; overflow: hidden; 
+    color: var(--text); 
+  }
   [hidden] { display: none !important; }
 
-  /* ================= Startseite ================= */
+  /* Login / Startseite */
   #home {
     position: fixed; inset: 0; z-index: 50;
     display: flex; align-items: center; justify-content: center;
-    background: #000;
+    background: #0b0c10;
   }
-  .home-card { width: min(440px, 90vw); text-align: center; }
+  .home-card { width: min(480px, 90vw); text-align: center; background: #14161e; padding: 35px; border-radius: 16px; border: 1px solid #232736; }
   .home-logo {
-    width: 64px; height: 64px; margin: 0 auto 18px;
-    border-radius: 18px;
+    width: 64px; height: 64px; margin: 0 auto 16px;
+    border-radius: 16px;
     background: linear-gradient(135deg, var(--accent), #00cec9);
     display: flex; align-items: center; justify-content: center;
-    font-weight: 800; font-size: 19px; color: #fff;
+    font-weight: 800; font-size: 20px; color: #fff;
   }
-  .home-card h1 { font-size: 24px; font-weight: 700; margin-bottom: 26px; letter-spacing: .3px; }
-  #playlistUrl, #playlistUrl2 {
+  .home-card h1 { font-size: 22px; font-weight: 700; margin-bottom: 20px; }
+  
+  .tv-input {
     width: 100%;
-    background: #101218;
+    background: #1c1f2c;
     color: var(--text);
-    border: none;
-    border-radius: 12px;
+    border: 2px solid transparent;
+    border-radius: 10px;
     padding: 14px 16px;
     font-size: 15px;
     outline: none;
+    margin-bottom: 12px;
+    text-align: center;
   }
-  #playlistUrl2 { margin-top: 8px; }
-  #playlistUrl:focus, #playlistUrl2:focus { background: #161a24; box-shadow: 0 0 0 1.5px var(--accent); }
-  .home-actions { display: flex; gap: 10px; margin-top: 12px; }
+  
+  .focusable:focus, .tv-input:focus, button:focus {
+    border-color: #00cec9 !important;
+    background: #252a3c !important;
+    box-shadow: 0 0 14px rgba(0, 206, 201, 0.5) !important;
+  }
+
   .home-actions button {
-    flex: 1; border: none; border-radius: 12px;
-    padding: 13px 16px; font-size: 15px; font-weight: 600;
-    cursor: pointer;
+    width: 100%; border: none; border-radius: 10px;
+    padding: 14px; font-size: 15px; font-weight: 700;
+    cursor: pointer; background: var(--accent); color: #fff;
   }
-  #loadBtn { background: var(--accent); color: #fff; }
-  #loadBtn:hover { filter: brightness(1.15); }
-  #fileBtn { background: #171b26; color: var(--muted); }
-  #fileBtn:hover { color: var(--text); }
-  #fileInput { display: none; }
-  .home-hint { margin-top: 16px; font-size: 12px; color: var(--muted); line-height: 1.6; }
+  .home-hint { margin-top: 18px; font-size: 12px; color: var(--muted); line-height: 1.5; }
   .home-error { margin-top: 12px; font-size: 13px; color: #ff6b6b; min-height: 18px; }
 
-  /* ================= Player ================= */
-  #player { position: fixed; inset: 0; background: #000; }
-  #player.idle { cursor: none; }
-  #video { width: 100%; height: 100%; object-fit: contain; display: block; transition: width .25s ease; }
+  /* Loader Status */
+  .loader-status {
+    margin-top: 15px;
+    font-size: 13px;
+    color: #00cec9;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+  }
+  .spinner {
+    width: 16px; height: 16px;
+    border: 2px solid rgba(0, 206, 201, 0.3);
+    border-top: 2px solid #00cec9;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+  /* Vollbild-Player */
+  #player { 
+    position: fixed; top: 0; left: 0; 
+    width: 100vw; height: 100vh; 
+    background: #000; z-index: 1;
+  }
+
+  #video { 
+    position: absolute; top: 0; left: 0;
+    width: 100vw; height: 100vh; 
+    background: #000; display: block; 
+  }
 
   /* Bildformate */
-  #video.fmt-169 { object-fit: contain; width: 100%; margin: 0; }
-  #video.fmt-zoom { object-fit: cover;  width: 100%; margin: 0; }
-  #video.fmt-43  { object-fit: contain; width: 75%;  margin: 0 auto; }   /* 4:3 mit Säulen links/rechts */
-  #video.fmt-fill{ object-fit: fill;   width: 100%; margin: 0; }         /* verzerrt auf Vollbild */
+  #video.fmt-169  { object-fit: contain; }
+  #video.fmt-zoom { object-fit: cover; }
+  #video.fmt-43   { object-fit: contain; width: 75vw; left: 12.5vw; }
+  #video.fmt-fill { object-fit: fill; }
 
-  /* ---------- Bildformat-Button am äußersten rechten Rand ----------
-     Erscheint und verschwindet zusammen mit der Senderliste ---------- */
+  /* Seitliches Panel */
+  #sidePanel {
+    position: absolute; top: 0; bottom: 0; left: 0; z-index: 10;
+    width: 38%; min-width: 320px; max-width: 500px;
+    background: linear-gradient(90deg, rgba(10,11,16,0.96) 0%, rgba(10,11,16,0.85) 85%, rgba(10,11,16,0) 100%);
+    opacity: 0; transform: translateX(-100%);
+    transition: opacity .25s ease, transform .25s ease;
+    pointer-events: none; display: flex; flex-direction: column;
+  }
+  #sidePanel.show { opacity: 1; transform: translateX(0); pointer-events: auto; }
+  
+  .panel-head { padding: 25px 20px 10px; font-size: 12px; color: var(--muted); text-transform: uppercase; font-weight: bold; letter-spacing: 1px; }
+
+  .format-control { padding: 0 16px 10px; }
   #fmtBtn {
-    position: absolute; right: 0; top: 50%; transform: translateY(-50%) translateX(100%);
-    border: none; cursor: pointer;
-    background: rgba(0,0,0,.62);
-    color: var(--text);
-    font-size: 13px; font-weight: 700; letter-spacing: .04em;
-    font-family: inherit;
-    padding: 14px 12px;
-    border-radius: 12px 0 0 12px;        /* liegt direkt am rechten Rand an */
-    backdrop-filter: blur(6px);
-    transition: background .2s, transform .28s ease, opacity .28s ease;
-    opacity: 0; pointer-events: none;
-  }
-  #fmtBtn.show { opacity: 1; pointer-events: auto; transform: translateY(-50%) translateX(0); }
-  #fmtBtn:hover { background: rgba(108,92,231,.75); }
-  #fmtBtn::after {
-    content: ""; display: block; width: 4px; height: 4px;
-    margin: 6px auto 0; border-radius: 50%;
-    background: var(--accent);
+    width: 100%; padding: 10px;
+    background: #1c1f2c; color: #00cec9;
+    border: 1px solid #00cec9; border-radius: 8px;
+    font-size: 13px; font-weight: bold; cursor: pointer; text-align: center;
   }
 
-  /* ---------- Senderliste: halbe Breite (knapp breiter als die Sendernamen),
-                schwarzer Grund, weiche überlappende Ränder (bis ~90 % transparent) ---------- */
-  #channelPanel {
-    position: absolute; top: 0; bottom: 0; left: 0;
-    width: 38%;
-    min-width: 240px;
-    max-width: 560px;
-    padding-right: 4%;
-    background: linear-gradient(90deg,
-      rgba(0,0,0,.78) 0%,
-      rgba(0,0,0,.7) 70%,
-      rgba(0,0,0,.35) 90%,
-      rgba(0,0,0,.06) 100%);
-    opacity: 0; transform: translateX(-4%);
-    transition: opacity .28s ease, transform .28s ease;
-    pointer-events: none;
-    display: flex; flex-direction: column;
-  }
-  #channelPanel.show { opacity: 1; transform: translateX(0); pointer-events: auto; }
-  .panel-head {
-    padding: 22px 26px 10px;
-    font-size: 12px; letter-spacing: .14em; text-transform: uppercase;
-    color: var(--muted);
-  }
-  #channelList {
-    flex: 1; overflow-y: auto; padding: 4px 12px 30px 12px;
-    scrollbar-width: thin;
-    scrollbar-color: rgba(255,255,255,.08) transparent;   /* Firefox: dunkel & dezent */
-  }
-  #channelList::-webkit-scrollbar { width: 4px; }
-  #channelList::-webkit-scrollbar-track { background: transparent; }
-  #channelList::-webkit-scrollbar-thumb { background: rgba(255,255,255,.08); border-radius: 2px; }
-  #channelList::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.14); }
+  #channelList { flex: 1; overflow-y: auto; padding: 4px 12px 30px 12px; }
 
   .channel {
-    display: flex; align-items: center; gap: 14px;
-    padding: 7px 14px; border-radius: 10px;
-    cursor: pointer;
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 12px; border-radius: 8px; cursor: pointer; color: var(--text);
+    margin-bottom: 4px;
   }
-  .channel img, .channel .fallback {
-    width: 44px; height: 44px; border-radius: 9px; flex-shrink: 0;
-    background: rgba(255,255,255,.06); object-fit: contain;
-    display: flex; align-items: center; justify-content: center;
-    color: var(--muted); font-size: 17px; font-weight: 700;
+  .channel-logo {
+    width: 36px; height: 36px; border-radius: 6px; object-fit: contain; background: rgba(255,255,255,0.05); flex-shrink: 0;
   }
-  .channel .meta { min-width: 0; flex: 1; }
-  .channel .name { font-size: 15px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .channel .sub { font-size: 11px; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .channel:hover { background: rgba(255,255,255,.07); }
-  /* Hervorhebung ohne Rahmen – überlappt weich nach rechts */
+  .channel-info { min-width: 0; flex: 1; }
+  .channel .name { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .channel .epg-preview { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  
   .channel.focus {
-    background: linear-gradient(90deg, rgba(108,92,231,.55), rgba(108,92,231,.12) 85%, rgba(108,92,231,0));
+    background: linear-gradient(90deg, rgba(108,92,231,0.9), rgba(108,92,231,0.3) 85%);
+    border-left: 4px solid #00cec9;
   }
-  .channel.playing .name::after { content: "  ▶"; font-size: 11px; color: var(--accent); }
+  .channel.playing .name::after { content: "  ▶"; font-size: 12px; color: #00cec9; }
 
-  /* ---------- Infobalken unten: Logo, Sendername, EPG – 5 s ---------- */
+  /* Infobalken unten bei Senderwechsel */
   #infoBar {
-    position: absolute; left: 0; right: 0; bottom: 0;
+    position: absolute; left: 40px; right: 40px; bottom: 30px; z-index: 8;
+    padding: 18px 24px; border-radius: 14px;
+    background: rgba(15, 17, 23, 0.92); border: 1px solid rgba(255,255,255,0.1);
     display: flex; align-items: center; gap: 18px;
-    padding: 26px 34px 22px;
-    background: linear-gradient(to top, rgba(0,0,0,.85), rgba(0,0,0,.45) 60%, rgba(0,0,0,0));
-    opacity: 0; transition: opacity .5s ease;
-    pointer-events: none;
+    opacity: 0; transform: translateY(20px); transition: opacity .3s ease, transform .3s ease; pointer-events: none;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.8);
   }
-  #infoBar.show { opacity: 1; }
-  #infoLogo {
-    width: 64px; height: 64px; border-radius: 12px;
-    background: rgba(255,255,255,.08); object-fit: contain;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 26px; font-weight: 800; color: var(--muted);
-  }
-  .info-text { flex: 1; min-width: 0; }
-  #infoName { font-size: 20px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  #infoEpg { font-size: 13px; color: #c9cddd; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  #infoEpg .now { font-weight: 600; }
-  #infoEpg .next { color: var(--muted); }
-  .epg-progress {
-    width: 260px; max-width: 40%; height: 3px; margin-top: 8px;
-    background: rgba(255,255,255,.18); border-radius: 2px; overflow: hidden;
-  }
-  #epgProgress { display: block; height: 100%; width: 0%; background: var(--accent); }
-  #infoClock { font-size: 22px; font-weight: 600; color: #e6e8f0; margin-left: auto; }
-
-  /* ---------- Ziffern-Direktwahl & Hinweis ---------- */
-  #digitOsd {
-    position: absolute; top: 26px; left: 50%; transform: translateX(-50%);
-    background: rgba(0,0,0,.65); color: #fff;
-    font-size: 26px; font-weight: 700; letter-spacing: .2em;
-    padding: 10px 22px; border-radius: 12px;
-    opacity: 0; transition: opacity .2s;
-  }
-  #digitOsd.show { opacity: 1; }
-  #hint {
-    position: absolute; top: 26px; left: 50%; transform: translateX(-50%);
-    background: rgba(0,0,0,.6); color: #d8dbe6;
-    font-size: 13px; padding: 10px 20px; border-radius: 10px;
-    opacity: 0; transition: opacity .4s;
-  }
-  #hint.show { opacity: 1; }
+  #infoBar.show { opacity: 1; transform: translateY(0); }
+  #infoLogo { width: 50px; height: 50px; object-fit: contain; border-radius: 8px; background: rgba(255,255,255,0.05); }
+  #infoName { font-size: 20px; font-weight: 700; color: #fff; }
+  #infoEpg { font-size: 13px; color: #00cec9; margin-top: 2px; }
 
   #toast {
-    position: fixed; bottom: 120px; left: 50%; transform: translateX(-50%) translateY(12px);
-    background: rgba(10,10,14,.85); color: var(--text);
-    padding: 11px 20px; border-radius: 10px; font-size: 13px;
-    opacity: 0; transition: all .25s; pointer-events: none; max-width: 80vw; z-index: 99;
+    position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%); z-index: 99;
+    background: rgba(10,10,14,0.95); color: var(--text);
+    padding: 12px 24px; border-radius: 10px; font-size: 14px;
+    opacity: 0; transition: all .25s; pointer-events: none; border: 1px solid var(--accent);
   }
-  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  #toast.show { opacity: 1; }
 </style>
 </head>
 <body>
 
-<!-- ================= Startseite ================= -->
 <section id="home">
   <div class="home-card">
     <div class="home-logo">M3U</div>
     <h1>M3U TV Player</h1>
-    <input type="text" id="playlistUrl" placeholder="Playlist-URL 1 (m3u / m3u8)" autocomplete="off" spellcheck="false" />
-    <input type="text" id="playlistUrl2" placeholder="Playlist-URL 2 (optional)" autocomplete="off" spellcheck="false" />
+    <input type="text" id="loginInput" class="tv-input focusable" placeholder="5-stelliger Code ODER M3U-URL" autocomplete="off" />
     <div class="home-actions">
-      <button id="loadBtn">Laden</button>
-      <button id="fileBtn">Datei…</button>
+      <button id="loadBtn" class="focusable">Anmelden / Laden</button>
     </div>
-    <input type="file" id="fileInput" accept=".m3u,.m3u8,text/plain" />
-    <p class="home-hint">
-      Beide URLs werden gespeichert und beim nächsten Öffnen automatisch eingesetzt.<br/>
-      Die Sender beider Playlists erscheinen in einer gemeinsamen Liste.<br/>
-      Fernbedienung: <b>OK</b> Senderliste · <b>↑/↓</b> Sender · <b>Zurück</b> Liste schließen
-    </p>
+    <div id="loaderStatus" class="loader-status" hidden>
+      <div class="spinner"></div>
+      <span id="loaderMsg">Verbindung wird aufgebaut...</span>
+    </div>
+    <p class="home-hint">Gib deinen 5-stelligen Code ein oder eine direkte M3U-URL.</p>
     <p class="home-error" id="homeError"></p>
   </div>
 </section>
 
-<!-- ================= Player ================= -->
 <section id="player" hidden>
-  <video id="video" class="fmt-169" playsinline></video>
+  <video id="video" class="fmt-169" playsinline autoplay></video>
 
-  <button id="fmtBtn" title="Bildformat ändern">16:9</button>
-
-  <nav id="channelPanel">
-    <div class="panel-head">Sender <span id="channelCount"></span></div>
+  <nav id="sidePanel">
+    <div class="panel-head">Einstellungen</div>
+    <div class="format-control">
+      <button id="fmtBtn" class="focusable">Bildformat: 16:9</button>
+    </div>
+    
+    <div class="panel-head">Senderliste <span id="channelCount"></span></div>
     <div id="channelList"></div>
   </nav>
 
   <footer id="infoBar">
-    <div id="infoLogo"></div>
-    <div class="info-text">
-      <div id="infoName"></div>
-      <div id="infoEpg"></div>
-      <div class="epg-progress"><i id="epgProgress"></i></div>
+    <img id="infoLogo" src="" alt="" />
+    <div>
+      <div id="infoName">Sendername</div>
+      <div id="infoEpg">Keine EPG Information verfügbar</div>
     </div>
-    <div id="infoClock"></div>
   </footer>
-
-  <div id="digitOsd"></div>
-  <div id="hint">OK/Enter = Senderliste &nbsp;·&nbsp; ↑/↓ = Sender wechseln &nbsp;·&nbsp; Ziffern = Direktwahl &nbsp;·&nbsp; Klick = Liste &nbsp;·&nbsp; Button rechts = Bildformat</div>
 </section>
 
 <div id="toast"></div>
 
+<!-- MiniHLS Engine -->
 <script>
-/* ============================================================
-   MiniHLS – kompakte eigene HLS-Engine via MediaSource (MSE)
-   Vollständig eingebettet, keine externe Bibliothek.
-   Unterstützt: Master-Playlists (beste Variante), VOD + Live,
-   EXT-X-MAP (fMP4), Codec-Erkennung, AES-128 (WebCrypto).
-   Nicht unterstützt: reine MPEG-TS-Segmente; in Safari natives HLS.
-   ============================================================ */
 class MiniHLS {
   constructor(video, cb) {
-    this.video = video;
-    this.cb = cb || {};
-    this.destroyed = false;
-    this.objectUrl = null;
-    this.segments = [];
-    this.appended = new Set();
-    this.appendedMaps = new Set();
-    this.mapCache = new Map();
-    this.keyCache = new Map();
-    this.ms = null;
-    this.sb = null;
-    this.isLive = false;
-    this.targetDuration = 6;
-    this.mediaUrl = null;
-    this.variantInfo = null;
-    this.liveTimer = null;
+    this.video = video; this.cb = cb || {}; this.destroyed = false;
+    this.segments = []; this.appended = new Set(); this.ms = null; this.sb = null;
   }
-  parseAttrs(line) {
-    const out = {};
-    const re = /([A-Za-z0-9-]+)=("([^"]*)"|[^,]*)/g;
-    let m;
-    while ((m = re.exec(line))) out[m[1]] = (m[3] !== undefined ? m[3] : m[2]).trim();
-    return out;
-  }
-  async fetchText(url) {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error("HTTP " + res.status + " beim Laden der Playlist");
-    return res.text();
-  }
-  async fetchBuf(url) {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error("HTTP " + res.status + " beim Laden eines Segments");
-    return res.arrayBuffer();
-  }
-  sniffMime(buf) {
-    const u8 = new Uint8Array(buf);
-    const find = (str) => {
-      const bytes = [];
-      for (let i = 0; i < str.length; i++) bytes.push(str.charCodeAt(i));
-      for (let i = 0; i <= u8.length - bytes.length; i++) {
-        let ok = true;
-        for (let j = 0; j < bytes.length; j++) if (u8[i + j] !== bytes[j]) { ok = false; break; }
-        if (ok) return i;
-      }
-      return -1;
-    };
-    if (find("ftyp") < 0) throw new Error("unsupported-container");
-    let codecs = "";
-    const avcIdx = find("avcC");
-    if (avcIdx >= 0) {
-      const b = u8;
-      const h = (n) => n.toString(16).toUpperCase().padStart(2, "0");
-      codecs += "avc1." + h(b[avcIdx + 5]) + h(b[avcIdx + 6]) + h(b[avcIdx + 7]);
-    }
-    const hasAudio = find("mp4a") >= 0 || find("esds") >= 0 || find("Opus") >= 0;
-    if (hasAudio) codecs += (codecs ? ", " : "") + "mp4a.40.2";
-    if (!codecs) codecs = "avc1.42E01E, mp4a.40.2";
-    return 'video/mp4; codecs="' + codecs + '"';
-  }
-  parseMaster(text, base) {
-    const variants = [];
-    let cur = null;
-    for (const raw of text.split(/\r?\n/)) {
-      const line = raw.trim();
-      if (!line) continue;
-      if (line.startsWith("#EXT-X-STREAM-INF")) {
-        const a = this.parseAttrs(line.slice(line.indexOf(":") + 1));
-        cur = { bandwidth: parseInt(a.BANDWIDTH || "0", 10) || 0, codecs: a.CODECS || "", resolution: a.RESOLUTION || "", url: "" };
-      } else if (!line.startsWith("#") && cur) {
-        cur.url = new URL(line, base).href;
-        variants.push(cur);
-        cur = null;
-      }
-    }
-    return variants;
-  }
+  async fetchText(url) { const res = await fetch(url); if (!res.ok) throw new Error("HTTP " + res.status); return res.text(); }
+  async fetchBuf(url) { const res = await fetch(url); if (!res.ok) throw new Error("HTTP " + res.status); return res.arrayBuffer(); }
   parseMedia(text, base) {
     const segs = [];
-    let dur = 0, map = null, key = null, mediaSeq = 0, targetDur = 0, endlist = false;
     for (const raw of text.split(/\r?\n/)) {
       const line = raw.trim();
-      if (!line) continue;
-      if (line.startsWith("#EXTINF:")) {
-        dur = parseFloat(line.slice(line.indexOf(":") + 1).split(",")[0]) || 0;
-      } else if (line.startsWith("#EXT-X-TARGETDURATION:")) {
-        targetDur = parseFloat(line.split(":")[1]) || 0;
-      } else if (line.startsWith("#EXT-X-MEDIA-SEQUENCE:")) {
-        mediaSeq = parseInt(line.split(":")[1], 10) || 0;
-      } else if (line.startsWith("#EXT-X-MAP:")) {
-        const a = this.parseAttrs(line.slice(line.indexOf(":") + 1));
-        map = a.URI ? new URL(a.URI, base).href : null;
-      } else if (line.startsWith("#EXT-X-KEY:")) {
-        const a = this.parseAttrs(line.slice(line.indexOf(":") + 1));
-        key = a.METHOD === "NONE" ? null : { method: a.METHOD, url: a.URI ? new URL(a.URI, base).href : null, iv: a.IV || null };
-      } else if (line.startsWith("#EXT-X-ENDLIST")) {
-        endlist = true;
-      } else if (!line.startsWith("#") && line) {
-        segs.push({ url: new URL(line, base).href, duration: dur, map: map, key: key, seq: mediaSeq + segs.length });
-        dur = 0;
-      }
+      if (line && !line.startsWith("#")) segs.push({ url: new URL(line, base).href });
     }
-    if (targetDur) this.targetDuration = targetDur;
-    this.isLive = !endlist;
-    this.segments = segs;
-    return segs;
+    this.segments = segs; return segs;
   }
   async load(url) {
-    const text = await this.fetchText(url);
-    if (this.destroyed) return;
+    const text = await this.fetchText(url); if (this.destroyed) return;
     if (/#EXT-X-STREAM-INF/i.test(text)) {
-      const variants = this.parseMaster(text, url);
-      if (!variants.length) throw new Error("Master-Playlist enthält keine Varianten");
-      variants.sort((a, b) => a.bandwidth - b.bandwidth);
-      const best = variants[variants.length - 1];
-      this.variantInfo = best;
-      if (this.cb.onVariant) this.cb.onVariant(best, variants);
-      await this.loadMedia(best.url);
-    } else {
-      await this.loadMedia(url);
+      const lines = text.split(/\r?\n/);
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].startsWith("#EXT-X-STREAM-INF")) {
+          await this.load(new URL(lines[i+1].trim(), url).href); return;
+        }
+      }
     }
-  }
-  async loadMedia(url) {
-    this.mediaUrl = url;
-    const text = await this.fetchText(url);
-    if (this.destroyed) return;
-    this.parseMedia(text, url);
-    if (!this.segments.length) throw new Error("Playlist enthält keine Segmente");
-    await this.setupMSE();
+    this.parseMedia(text, url); await this.setupMSE();
   }
   setupMSE() {
     return new Promise((resolve, reject) => {
-      if (this.destroyed) return reject(new Error("abgebrochen"));
-      if (this.segments.some(s => /\.ts(\?|#|$)/i.test(s.url))) {
-        return reject(new Error("MPEG-TS-Segmente werden nicht unterstützt (nur fMP4-HLS)"));
-      }
-      if (typeof MediaSource === "undefined") {
-        return reject(new Error("MediaSource (MSE) wird von diesem Browser nicht unterstützt"));
-      }
-      this.ms = new MediaSource();
-      this.objectUrl = URL.createObjectURL(this.ms);
-      this.video.removeAttribute("src");
-      this.video.src = this.objectUrl;
-      this.video.load();
+      this.ms = new MediaSource(); this.video.src = URL.createObjectURL(this.ms);
       this.ms.addEventListener("sourceopen", async () => {
         try {
-          let mime;
-          if (this.variantInfo && this.variantInfo.codecs) {
-            mime = 'video/mp4; codecs="' + this.variantInfo.codecs + '"';
-          } else {
-            const first = this.segments[0];
-            const probeUrl = first.map || first.url;
-            const probe = await this.fetchBuf(probeUrl);
-            if (this.destroyed) return;
-            mime = this.sniffMime(probe);
-            if (first.map && !this.mapCache.has(first.map)) this.mapCache.set(first.map, probe);
-          }
-          if (!MediaSource.isTypeSupported(mime)) {
-            const fallback = 'video/mp4; codecs="avc1.42E01E, mp4a.40.2"';
-            if (MediaSource.isTypeSupported(fallback)) mime = fallback;
-            else throw new Error("Format vom Browser nicht unterstützt: " + mime);
-          }
-          this.mime = mime;
-          this.sb = this.ms.addSourceBuffer(mime);
-          this.sb.mode = "segments";
-          this.appendLoop();
-          if (this.isLive) {
-            this.liveTimer = setTimeout(() => this.refreshLive(), Math.max(this.targetDuration, 2) * 1000);
-          }
-          resolve();
-        } catch (e) {
-          let msg = e && e.message === "unsupported-container"
-            ? "Kein fMP4-Container erkannt (MPEG-TS wird nicht unterstützt)"
-            : (e && e.message) || String(e);
-          reject(new Error(msg));
-        }
+          this.sb = this.ms.addSourceBuffer('video/mp4; codecs="avc1.42E01E, mp4a.40.2"');
+          this.appendLoop(); resolve();
+        } catch (e) { reject(e); }
       }, { once: true });
     });
   }
   async appendLoop() {
     if (this.destroyed) return;
-    let end = 0;
-    try { const b = this.video.buffered; if (b.length) end = b.end(b.length - 1); } catch (e) {}
-    const ahead = end - this.video.currentTime;
-    if (ahead > 24) { setTimeout(() => this.appendLoop(), 1500); return; }
     const seg = this.segments.find(s => !this.appended.has(s.url));
-    if (!seg) {
-      if (!this.isLive) {
-        if (this.ms && this.ms.readyState === "open") { try { this.ms.endOfStream(); } catch (e) {} }
-        return;
-      }
-      setTimeout(() => this.appendLoop(), 800);
-      return;
-    }
+    if (!seg) return;
     try {
-      let data = await this.fetchBuf(seg.url);
-      if (seg.key && seg.key.method === "AES-128") data = await this.decryptAes(data, seg);
-      if (seg.map && !this.appendedMaps.has(seg.map)) {
-        let init = this.mapCache.get(seg.map);
-        if (!init) { init = await this.fetchBuf(seg.map); this.mapCache.set(seg.map, init); }
-        await this.appendBuf(init);
-        this.appendedMaps.add(seg.map);
-      }
-      await this.appendBuf(data);
-      this.appended.add(seg.url);
-      this.appendLoop();
-    } catch (e) {
-      this.appended.add(seg.url);
-      if (this.isLive) this.appendLoop();
-      else if (this.cb.onError) this.cb.onError("Segment-Fehler: " + ((e && e.message) || e));
-    }
-  }
-  appendBuf(data) {
-    return new Promise((resolve, reject) => {
-      const sb = this.sb;
-      if (!sb || this.destroyed) return reject(new Error("Engine bereits beendet"));
-      const done = () => { sb.removeEventListener("updateend", done); sb.removeEventListener("error", failEv); resolve(); };
-      const failEv = () => { sb.removeEventListener("updateend", done); sb.removeEventListener("error", failEv); reject(new Error("Append-Fehler (SourceBuffer)")); };
-      sb.addEventListener("updateend", done);
-      sb.addEventListener("error", failEv);
-      try { sb.appendBuffer(data); }
-      catch (e) { sb.removeEventListener("updateend", done); sb.removeEventListener("error", failEv); reject(e); }
-    });
-  }
-  async decryptAes(data, seg) {
-    const key = seg.key;
-    if (!key.url) throw new Error("AES-128 ohne Key-URL");
-    let cryptoKey = this.keyCache.get(key.url);
-    if (!cryptoKey) {
-      const raw = await this.fetchBuf(key.url);
-      cryptoKey = await crypto.subtle.importKey("raw", raw, { name: "AES-CBC" }, false, ["decrypt"]);
-      this.keyCache.set(key.url, cryptoKey);
-    }
-    let iv;
-    if (key.iv) {
-      const hex = key.iv.replace(/^0x/i, "");
-      iv = new Uint8Array(16);
-      for (let i = 0; i < 16; i++) iv[i] = parseInt(hex.substr(i * 2, 2) || "0", 16);
-    } else {
-      iv = new Uint8Array(16);
-      new DataView(iv.buffer).setUint32(12, seg.seq >>> 0);
-    }
-    const plain = await crypto.subtle.decrypt({ name: "AES-CBC", iv: iv }, cryptoKey, data);
-    const out = new Uint8Array(plain);
-    const pad = out[out.length - 1];
-    if (pad >= 1 && pad <= 16) return out.slice(0, out.length - pad).buffer;
-    return plain;
-  }
-  async refreshLive() {
-    if (this.destroyed || !this.isLive) return;
-    try {
-      const text = await this.fetchText(this.mediaUrl);
-      if (!this.destroyed) this.parseMedia(text, this.mediaUrl);
-    } catch (e) {}
-    if (!this.destroyed) {
-      this.liveTimer = setTimeout(() => this.refreshLive(), Math.max(this.targetDuration, 2) * 1000);
-    }
+      const data = await this.fetchBuf(seg.url);
+      this.sb.appendBuffer(data); this.appended.add(seg.url);
+      this.sb.addEventListener("updateend", () => this.appendLoop(), { once: true });
+    } catch (e) { if (this.cb.onError) this.cb.onError("Stream-Fehler"); }
   }
   destroy() {
     this.destroyed = true;
-    if (this.liveTimer) clearTimeout(this.liveTimer);
-    try { if (this.sb) this.sb.abort(); } catch (e) {}
     try { if (this.ms && this.ms.readyState === "open") this.ms.endOfStream(); } catch (e) {}
-    if (this.objectUrl) { URL.revokeObjectURL(this.objectUrl); this.objectUrl = null; }
   }
 }
 </script>
@@ -531,120 +272,191 @@ class MiniHLS {
 (function () {
   "use strict";
 
-  /* ================= State ================= */
-  const LS_KEY = "m3uTvPlayer.lastUrl";
-  const LS_KEY2 = "m3uTvPlayer.lastUrl2";
-  let channels = [];        // {name, url, logo, group, tvgId}
-  let activeIndex = -1;     // aktuell laufender Sender
-  let focusIndex = 0;       // hervorgehobener Eintrag in der Liste
-  let currentEngine = null; // aktive MiniHLS-Instanz
-  let epgUrls = [];         // XMLTV-EPG-Quellen aus den Playlists (falls vorhanden)
-  const epgCache = new Map();
-  let infoTimer = null;
-  let digitBuffer = "";
-  let digitTimer = null;
-  let clickTimer = null;
-  let idleTimer = null;
+  // WICHTIG: Deine Render oder Server-URL hier eintragen
+  const SERVER_URL = "https://DEIN-EXISTIERENDER-SERVICE.onrender.com"; 
+
+  const LS_KEY = "m3uTvPlayer.lastLogin";
+  let channels = [];
+  let activeIndex = -1;
+  let focusIndex = 0;
+  let currentEngine = null;
+  let infoTimeout = null;
+
+  const formats = [
+    { id: "fmt-169", label: "Bildformat: 16:9" },
+    { id: "fmt-zoom", label: "Bildformat: Zoom" },
+    { id: "fmt-43", label: "Bildformat: 4:3" },
+    { id: "fmt-fill", label: "Bildformat: Stretch" }
+  ];
+  let currentFmtIndex = 0;
 
   const $ = (id) => document.getElementById(id);
   const video = $("video");
-  const panel = $("channelPanel");
-  const infoBar = $("infoBar");
+  const panel = $("sidePanel");
 
-  /* ================= Startseite ================= */
-  const savedUrl = localStorage.getItem(LS_KEY) || "";
-  const savedUrl2 = localStorage.getItem(LS_KEY2) || "";
-  if (savedUrl) $("playlistUrl").value = savedUrl;
-  if (savedUrl2) $("playlistUrl2").value = savedUrl2;
+  document.addEventListener("DOMContentLoaded", () => {
+    try {
+      if (window.tizen && window.tizen.tvinputdevice) {
+        tizen.tvinputdevice.registerKey("Up");
+        tizen.tvinputdevice.registerKey("Down");
+        tizen.tvinputdevice.registerKey("Left");
+        tizen.tvinputdevice.registerKey("Right");
+        tizen.tvinputdevice.registerKey("Enter");
+        tizen.tvinputdevice.registerKey("Return");
+      }
+    } catch (e) {}
 
-  $("loadBtn").addEventListener("click", () => loadFromInput());
-  $("playlistUrl").addEventListener("keydown", e => {
-    if (e.key === "Enter") loadFromInput();
-  });
-  $("playlistUrl2").addEventListener("keydown", e => {
-    if (e.key === "Enter") loadFromInput();
-  });
-  $("fileBtn").addEventListener("click", () => $("fileInput").click());
-  $("fileInput").addEventListener("change", e => {
-    const file = e.target.files && e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => { startPlayer(String(reader.result)); };
-    reader.readAsText(file);
+    const saved = localStorage.getItem(LS_KEY);
+    if (saved) $("loginInput").value = saved;
+    $("loginInput").focus();
   });
 
-  function loadFromInput() {
-    const url1 = $("playlistUrl").value.trim();
-    const url2 = $("playlistUrl2").value.trim();
-    if (!url1 && !url2) { $("homeError").textContent = "Bitte mindestens eine Playlist-URL eingeben."; return; }
-    /* beide URLs für das nächste Öffnen merken */
-    if (url1) localStorage.setItem(LS_KEY, url1); else localStorage.removeItem(LS_KEY);
-    if (url2) localStorage.setItem(LS_KEY2, url2); else localStorage.removeItem(LS_KEY2);
-    $("homeError").textContent = "";
-    enterFullscreen();               /* Start im Vollbildmodus */
-    loadPlaylistsFromUrls([url1, url2].filter(Boolean));
-  }
+  document.addEventListener("keydown", (e) => {
+    const isPlayerVisible = !$("player").hidden;
 
-  async function loadPlaylistsFromUrls(urls) {
-    $("homeError").textContent = "";
-    const results = await Promise.allSettled(urls.map(async u => {
-      const res = await fetch(u);
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      return res.text();
-    }));
-    const texts = results.filter(r => r.status === "fulfilled").map(r => r.value);
-    const failed = results.length - texts.length;
-    if (!texts.length) {
-      $("homeError").textContent = "Keine Playlist ladbar (CORS, Netzwerk oder URLs ungültig). Tipp: Dateien herunterladen und über „Datei…“ öffnen.";
-      return;
+    switch (e.keyCode) {
+      case 38: // HOCH
+        if (!isPlayerVisible) {
+          $("loginInput").focus();
+        } else if (panel.classList.contains("show")) {
+          setFocus(focusIndex - 1);
+        } else {
+          showPanel(true);
+        }
+        break;
+
+      case 40: // RUNTER
+        if (!isPlayerVisible) {
+          $("loadBtn").focus();
+        } else if (panel.classList.contains("show")) {
+          setFocus(focusIndex + 1);
+        } else {
+          showPanel(true);
+        }
+        break;
+
+      case 13: // OK / ENTER
+        if (!isPlayerVisible) {
+          handleLogin();
+        } else if (panel.classList.contains("show")) {
+          if (focusIndex === 0) {
+            toggleFormat();
+          } else {
+            selectAndPlay(focusIndex - 1);
+          }
+        } else {
+          showPanel(true);
+        }
+        break;
+
+      case 10009: // RETURN / ZURÜCK
+        if (isPlayerVisible) {
+          if (panel.classList.contains("show")) {
+            showPanel(false);
+          } else {
+            if (currentEngine) { currentEngine.destroy(); currentEngine = null; }
+            video.pause();
+            video.removeAttribute("src");
+            video.load();
+            $("player").hidden = true;
+            $("home").hidden = false;
+            $("loginInput").focus();
+          }
+        } else {
+          try { tizen.application.getCurrentApplication().exit(); } catch (e) {}
+        }
+        break;
     }
-    if (failed) toast("⚠️ " + failed + " Playlist(s) nicht ladbar – restliche werden angezeigt.");
-    startPlayer(texts);
+  });
+
+  $("loadBtn").addEventListener("click", handleLogin);
+  $("fmtBtn").addEventListener("click", toggleFormat);
+
+  function toggleFormat() {
+    currentFmtIndex = (currentFmtIndex + 1) % formats.length;
+    const fmt = formats[currentFmtIndex];
+    video.className = fmt.id;
+    $("fmtBtn").textContent = fmt.label;
   }
 
-  function enterFullscreen() {
-    const el = document.documentElement;
-    const req = el.requestFullscreen || el.webkitRequestFullscreen;
-    if (req) { try { req.call(el); } catch (e) {} }
+  function showStatus(msg) {
+    $("homeError").textContent = "";
+    $("loaderMsg").textContent = msg;
+    $("loaderStatus").hidden = false;
   }
 
-  /* ================= M3U-Parser ================= */
+  function hideStatus() {
+    $("loaderStatus").hidden = true;
+  }
+
+  async function handleLogin() {
+    const input = $("loginInput").value.trim();
+    if (!input) { $("homeError").textContent = "Bitte Code oder URL eingeben."; return; }
+    localStorage.setItem(LS_KEY, input);
+
+    let m3uUrl = input;
+
+    if (input.length === 5 && !input.startsWith("http")) {
+      showStatus("Server wird aufgeweckt & Code abgefragt...");
+      try {
+        const res = await fetch(`${SERVER_URL}/api/get-m3u?code=${input}`);
+        if (!res.ok) throw new Error("Ungültiger Code");
+        const data = await res.json();
+        m3uUrl = data.url || data.m3u;
+      } catch (err) {
+        hideStatus();
+        $("homeError").textContent = "Fehler: Code nicht gefunden oder Server offline.";
+        return;
+      }
+    }
+
+    showStatus("Senderliste wird geladen...");
+
+    fetch(m3uUrl)
+      .then(r => r.text())
+      .then(text => {
+        showStatus("Senderliste wird verarbeitet...");
+        setTimeout(() => {
+          channels = parseM3U(text);
+          hideStatus();
+          if (!channels.length) {
+            $("homeError").textContent = "Keine Sender in der Liste gefunden.";
+            return;
+          }
+          startPlayer();
+        }, 50);
+      })
+      .catch(err => {
+        hideStatus();
+        $("homeError").textContent = "Fehler beim Laden der M3U Playlist.";
+      });
+  }
+
   function parseM3U(text) {
     const lines = text.split(/\r?\n/);
     const out = [];
     let pending = null;
-    for (const raw of lines) {
-      const line = raw.trim();
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
       if (!line) continue;
-      if (line.toUpperCase().startsWith("#EXTINF")) {
-        pending = { name: "", logo: "", group: "", tvgId: "" };
-        const commaIdx = line.indexOf(",");
-        let attrPart = commaIdx >= 0 ? line.slice(0, commaIdx) : line;
-        if (commaIdx >= 0) pending.name = line.slice(commaIdx + 1).trim();
-        const attr = (n) => {
-          const m = attrPart.match(new RegExp(n + '="([^"]*)"', "i"));
-          return m ? m[1] : "";
+
+      if (line.startsWith("#EXTINF:")) {
+        const logoMatch = line.match(/tvg-logo="([^"]+)"/i);
+        const epgMatch = line.match(/tvg-name="([^"]+)"/i);
+        const comma = line.indexOf(",");
+        
+        pending = {
+          name: comma >= 0 ? line.slice(comma + 1).trim() : "Unbekannter Sender",
+          logo: logoMatch ? logoMatch[1] : "",
+          epg: epgMatch ? epgMatch[1] : ""
         };
-        pending.logo = attr("tvg-logo") || attr("logo");
-        pending.group = attr("group-title") || attr("group");
-        pending.tvgId = attr("tvg-id");
-      } else if (line.toUpperCase().startsWith("#EXTM3U")) {
-        /* EPG-URLs (XMLTV) in den Headern erkennen, falls vorhanden */
-        const m = line.match(/(?:x-tvg-url|url-epg|tvg-url)=("[^"]*"|\S+)/i);
-        if (m) {
-          const u = m[1].replace(/^"|"$/g, "");
-          if (!epgUrls.includes(u)) epgUrls.push(u);
-        }
-      } else if (line.startsWith("#")) {
-        continue;
-      } else {
-        const name = pending && pending.name ? pending.name : line.split("/").pop().split("?")[0];
+      } else if (!line.startsWith("#")) {
         out.push({
-          name: name || "Kanal " + (out.length + 1),
-          url: line,
+          name: pending ? pending.name : "Sender " + (out.length + 1),
           logo: pending ? pending.logo : "",
-          group: pending ? pending.group : "",
-          tvgId: pending ? pending.tvgId : ""
+          epg: pending ? pending.epg : "Keine EPG Information",
+          url: line
         });
         pending = null;
       }
@@ -652,354 +464,100 @@ class MiniHLS {
     return out;
   }
 
-  /* ================= Player starten ================= */
-  function startPlayer(playlistTexts) {
-    /* Einzeln übergebene Datei/Text oder mehrere Playlists */
-    const texts = Array.isArray(playlistTexts) ? playlistTexts : [playlistTexts];
-    epgUrls = [];
-    const parsed = [];
-    texts.forEach(t => { const p = parseM3U(t); if (p.length) parsed.push(...p); });
-    if (!parsed.length) {
-      $("homeError").textContent = "Keine Sender in den Playlists gefunden.";
-      return;
-    }
-    channels = parsed;
-    activeIndex = -1;
-    focusIndex = 0;
+  function startPlayer() {
     $("home").hidden = true;
     $("player").hidden = false;
-    $("channelCount").textContent = "· " + channels.length;
+    $("channelCount").textContent = "(" + channels.length + ")";
     renderList();
-    showPanel(true);              /* Liste bleibt, bis ein Sender gewählt ist */
-    showHint();
-    resetIdleCursor();
-  }
-
-  function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
+    showPanel(true);
   }
 
   function renderList() {
     const listEl = $("channelList");
-    listEl.innerHTML = channels.map((c, i) =>
-      '<div class="channel' + (i === focusIndex ? " focus" : "") + (i === activeIndex ? " playing" : "") + '" data-i="' + i + '">' +
-        (c.logo
-          ? '<img src="' + escapeHtml(c.logo) + '" alt="" loading="lazy" onerror="this.outerHTML=\'<div class=&quot;fallback&quot;>' + escapeHtml((c.name || "?")[0].toUpperCase()) + '</div>\'">'
-          : '<div class="fallback">' + escapeHtml((c.name || "?")[0].toUpperCase()) + "</div>") +
-        '<div class="meta"><div class="name">' + escapeHtml(c.name) + "</div>" +
-        (c.group ? '<div class="sub">' + escapeHtml(c.group) + "</div>" : "") +
-        "</div></div>"
-    ).join("");
-    listEl.querySelectorAll(".channel").forEach(el => {
-      el.addEventListener("click", ev => { ev.stopPropagation(); selectAndPlay(parseInt(el.dataset.i, 10)); });
-    });
-    const focusEl = listEl.querySelector(".channel.focus");
-    if (focusEl) focusEl.scrollIntoView({ block: "nearest" });
+    listEl.innerHTML = channels.map((c, i) => {
+      const idx = i + 1;
+      const logoHtml = c.logo ? `<img class="channel-logo" src="${c.logo}" onerror="this.style.display='none'"/>` : `<div class="channel-logo"></div>`;
+      return `
+        <div class="channel ${idx === focusIndex ? "focus" : ""} ${i === activeIndex ? "playing" : ""}">
+          ${logoHtml}
+          <div class="channel-info">
+            <div class="name">${c.name}</div>
+            <div class="epg-preview">${c.epg}</div>
+          </div>
+        </div>
+      `;
+    }).join("");
   }
 
   function setFocus(i) {
-    i = Math.max(0, Math.min(channels.length - 1, i));
-    if (i === focusIndex) return;
-    const listEl = $("channelList");
-    listEl.querySelectorAll(".channel.focus").forEach(el => el.classList.remove("focus"));
-    focusIndex = i;
-    const el = listEl.querySelector('.channel[data-i="' + i + '"]');
-    if (el) { el.classList.add("focus"); el.scrollIntoView({ block: "nearest" }); }
+    focusIndex = Math.max(0, Math.min(channels.length, i));
+    
+    if (focusIndex === 0) {
+      $("fmtBtn").focus();
+      renderList();
+    } else {
+      renderList();
+      const focusEl = $("channelList").querySelector(".channel.focus");
+      if (focusEl) focusEl.scrollIntoView({ block: "nearest" });
+    }
   }
 
-  /* ================= Senderliste ein-/ausblenden ================= */
-  function panelVisible() { return panel.classList.contains("show"); }
   function showPanel(show) {
-    if (show) panel.classList.add("show");
-    else panel.classList.remove("show");
-    $("fmtBtn").classList.toggle("show", show);   /* Format-Button folgt der Senderliste */
-    resetIdleCursor();
+    if (show) {
+      panel.classList.add("show");
+      setFocus(focusIndex);
+    } else {
+      panel.classList.remove("show");
+    }
   }
-  function togglePanel() { showPanel(!panelVisible()); }
 
-  /* ================= Bildformat (Button am äußersten rechten Rand) ================= */
-  const FORMATS = ["169", "43", "zoom", "fill"];
-  const FORMAT_LABELS = { "169": "16:9", "43": "4:3", "zoom": "Zoom", "fill": "Voll" };
-  let currentFormat = "169";
-
-  function setFormat(fmt) {
-    if (!FORMATS.includes(fmt)) return;
-    currentFormat = fmt;
-    FORMATS.forEach(f => video.classList.remove("fmt-" + f));
-    video.classList.add("fmt-" + fmt);
-    $("fmtBtn").textContent = FORMAT_LABELS[fmt];
-    toast("Bildformat: " + FORMAT_LABELS[fmt]);
-  }
-  $("fmtBtn").addEventListener("click", ev => {
-    ev.stopPropagation();
-    const idx = FORMATS.indexOf(currentFormat);
-    setFormat(FORMATS[(idx + 1) % FORMATS.length]);   /* ein Button blättert durch */
-  });
-
-  /* ================= Wiedergabe ================= */
   async function selectAndPlay(i) {
-    if (i < 0 || i >= channels.length) return;
-    showPanel(false);          /* Liste verschwindet nach Senderwahl */
-    const ch = channels[i];
-    const prev = activeIndex;
+    showPanel(false);
     activeIndex = i;
-    focusIndex = i;
-    renderList();
+    const ch = channels[i];
+
+    $("infoName").textContent = ch.name;
+    $("infoEpg").textContent = ch.epg;
+    if (ch.logo) {
+      $("infoLogo").src = ch.logo;
+      $("infoLogo").style.display = "block";
+    } else {
+      $("infoLogo").style.display = "none";
+    }
+
+    const infoBar = $("infoBar");
+    infoBar.classList.add("show");
+    
+    if (infoTimeout) clearTimeout(infoTimeout);
+    infoTimeout = setTimeout(() => infoBar.classList.remove("show"), 5000);
 
     if (currentEngine) { currentEngine.destroy(); currentEngine = null; }
-    try { video.pause(); } catch (e) {}
-    video.removeAttribute("src");
 
-    const isHlsUrl = /\.m3u8?(\?|#|$)/i.test(ch.url) || /m3u8/i.test(ch.url);
-    const nativeHls = !!(video.canPlayType && video.canPlayType("application/vnd.apple.mpegurl"));
+    const streamUrl = ch.url.toLowerCase();
+    const isDirectStream = streamUrl.includes(".mpeg") || streamUrl.includes(".ts") || streamUrl.includes(".mkv") || streamUrl.includes(".mp4") || !streamUrl.includes(".m3u8");
 
-    if (isHlsUrl && !nativeHls && typeof MiniHLS !== "undefined") {
-      const engine = new MiniHLS(video, {
-        onError: (msg) => { toast("⚠️ " + msg); }
-      });
-      currentEngine = engine;
-      try {
-        await engine.load(ch.url);
-        video.play().catch(err => { if (err && err.name !== "NotAllowedError") toast("⚠️ Wiedergabe blockiert."); });
-      } catch (err) {
-        if (currentEngine === engine) { engine.destroy(); currentEngine = null; }
-        activeIndex = prev;
-        toast("⚠️ HLS-Stream nicht abspielbar: " + ((err && err.message) || err) + " (CORS prüfen)");
-      }
-    } else {
+    if (isDirectStream) {
+      // Direktes Abspielen für .mpeg, .ts und normale HTTP IPTV Streams
       video.src = ch.url;
-      video.load();
-      video.play().catch(err => { if (err && err.name !== "NotAllowedError") toast("⚠️ Stream nicht abspielbar."); });
-    }
-
-    showInfo(ch);               /* Logo, Name, EPG – 5 Sekunden */
-  }
-
-  function nextChannel(step) {
-    if (!channels.length) return;
-    const i = activeIndex < 0 ? 0 : (activeIndex + step + channels.length) % channels.length;
-    selectAndPlay(i);
-  }
-
-  /* ================= Infobalken (unten, 5 Sekunden) ================= */
-  async function showInfo(ch) {
-    const logoEl = $("infoLogo");
-    if (ch.logo) {
-      logoEl.innerHTML = "";
-      const img = document.createElement("img");
-      img.src = ch.logo;
-      img.style.cssText = "width:64px;height:64px;border-radius:12px;object-fit:contain;";
-      img.onerror = () => { logoEl.innerHTML = escapeHtml((ch.name || "?")[0].toUpperCase()); };
-      logoEl.appendChild(img);
+      video.play().catch(err => {
+        toast("Stream kann nicht wiedergegeben werden.");
+      });
     } else {
-      logoEl.innerHTML = escapeHtml((ch.name || "?")[0].toUpperCase());
-    }
-    $("infoName").textContent = ch.name;
-    $("infoEpg").innerHTML = '<span class="next">EPG wird geladen…</span>';
-    $("epgProgress").style.width = "0%";
-    infoBar.classList.add("show");
-    clearTimeout(infoTimer);
-    infoTimer = setTimeout(() => infoBar.classList.remove("show"), 5000);
-
-    /* Uhrzeit */
-    $("infoClock").textContent = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
-
-    /* EPG, falls Quelle vorhanden */
-    const epg = await loadEpg();
-    if (!epg) {
-      $("infoEpg").innerHTML = '<span class="next">Kein EPG verfügbar</span>';
-      return;
-    }
-    const prog = findNowNext(epg, ch);
-    if (!prog || !prog.now) {
-      $("infoEpg").innerHTML = '<span class="next">Keine EPG-Daten für diesen Sender</span>';
-      return;
-    }
-    let html = '<span class="now">' + escapeHtml(fmtTime(prog.now.start) + "–" + fmtTime(prog.now.stop) + "  " + prog.now.title) + "</span>";
-    if (prog.next) html += ' &nbsp; <span class="next">Danach: ' + escapeHtml(prog.next.title) + " (" + fmtTime(prog.next.start) + ")</span>";
-    $("infoEpg").innerHTML = html;
-    const pct = prog.now.start && prog.now.stop && prog.now.stop > prog.now.start
-      ? Math.min(100, Math.max(0, (Date.now() - prog.now.start) / (prog.now.stop - prog.now.start) * 100))
-      : 0;
-    $("epgProgress").style.width = pct.toFixed(1) + "%";
-  }
-
-  /* ================= EPG (XMLTV) – mehrere Quellen werden vereinigt ================= */
-  async function loadEpg() {
-    if (!epgUrls.length) return null;
-    const key = epgUrls.join("||");
-    if (epgCache.has(key)) return epgCache.get(key);
-    const maps = await Promise.all(epgUrls.map(u => fetchEpg(u)));
-    const merged = new Map();
-    maps.filter(Boolean).forEach(map => {
-      for (const [k, v] of map) if (!merged.has(k)) merged.set(k, v);
-    });
-    const result = merged.size ? merged : null;
-    epgCache.set(key, result);
-    return result;
-  }
-
-  async function fetchEpg(epgUrl) {
-    try {
-      const res = await fetch(epgUrl);
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      const text = await res.text();
-      const doc = new DOMParser().parseFromString(text, "text/xml");
-      const map = new Map();
-      const parseT = (s) => {
-        if (!s) return null;
-        const m = s.match(/(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})/);
-        if (!m) return null;
-        return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
-      };
-      doc.querySelectorAll("programme").forEach(p => {
-        const id = (p.getAttribute("channel") || "").toLowerCase();
-        if (!id) return;
-        if (!map.has(id)) map.set(id, []);
-        const titleEl = p.querySelector("title");
-        map.get(id).push({
-          start: parseT(p.getAttribute("start")),
-          stop: parseT(p.getAttribute("stop")),
-          title: titleEl ? titleEl.textContent.trim() : ""
-        });
+      // HLS Engine für .m3u8 Aufrufe
+      video.src = ch.url;
+      video.play().catch(() => {
+        currentEngine = new MiniHLS(video, { onError: (m) => toast(m) });
+        currentEngine.load(ch.url).then(() => video.play()).catch(() => toast("HLS-Fehler beim Abspielen"));
       });
-      /* display-name als zusätzliche Schlüssel */
-      doc.querySelectorAll("channel").forEach(c => {
-        const id = (c.getAttribute("id") || "").toLowerCase();
-        if (!map.has(id)) map.set(id, []);
-        const entry = map.get(id);
-        c.querySelectorAll("display-name").forEach(d => {
-          const n = d.textContent.trim().toLowerCase();
-          if (n && !map.has(n)) map.set(n, entry);
-        });
-      });
-      return map;
-    } catch (e) {
-      return null; /* Quelle überspringen, nicht erneut versuchen */
     }
   }
 
-  function findNowNext(epgMap, ch) {
-    const keys = [];
-    if (ch.tvgId) keys.push(ch.tvgId.toLowerCase());
-    keys.push(ch.name.toLowerCase());
-    keys.push(ch.name.toLowerCase().replace(/[\s._-]/g, ""));
-    let progs = null;
-    for (const k of keys) {
-      if (epgMap.has(k) && epgMap.get(k).length) { progs = epgMap.get(k); break; }
-    }
-    if (!progs) {
-      /* Fuzzy: Schlüssel enthält Sendernamen */
-      for (const [k, v] of epgMap) {
-        if (v.length && (k.includes(ch.name.toLowerCase()) || ch.name.toLowerCase().includes(k))) { progs = v; break; }
-      }
-    }
-    if (!progs) return null;
-    const now = Date.now();
-    const sorted = progs.filter(p => p.start && p.title).sort((a, b) => a.start - b.start);
-    const nowP = sorted.find(p => p.start.getTime() <= now && (!p.stop || p.stop.getTime() > now));
-    const nextP = sorted.find(p => p.start.getTime() > now);
-    return { now: nowP, next: nextP };
-  }
-
-  function fmtTime(d) {
-    return d ? d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }) : "";
-  }
-
-  /* ================= Ziffern-Direktwahl (Fernbedienung) ================= */
-  function pressDigit(d) {
-    digitBuffer += d;
-    const osd = $("digitOsd");
-    osd.textContent = digitBuffer;
-    osd.classList.add("show");
-    clearTimeout(digitTimer);
-    digitTimer = setTimeout(() => {
-      osd.classList.remove("show");
-      const idx = parseInt(digitBuffer, 10) - 1;
-      digitBuffer = "";
-      if (!channels.length) return;
-      if (idx >= 0 && idx < channels.length) selectAndPlay(idx);
-      else toast("Kein Sender mit Nummer " + (idx + 1));
-    }, 1400);
-  }
-
-  /* ================= Hinweis & Toast ================= */
-  let hintTimer = null;
-  function showHint() {
-    const h = $("hint");
-    h.classList.add("show");
-    clearTimeout(hintTimer);
-    hintTimer = setTimeout(() => h.classList.remove("show"), 6000);
-  }
-  let toastTimer = null;
   function toast(msg) {
     const t = $("toast");
     t.textContent = msg;
     t.classList.add("show");
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => t.classList.remove("show"), 3200);
+    setTimeout(() => t.classList.remove("show"), 3000);
   }
-
-  /* ================= Cursor im Vollbild ausblenden ================= */
-  function resetIdleCursor() {
-    const p = $("player");
-    p.classList.remove("idle");
-    clearTimeout(idleTimer);
-    idleTimer = setTimeout(() => p.classList.add("idle"), 3000);
-  }
-  $("player").addEventListener("mousemove", resetIdleCursor);
-
-  /* ================= Maus ================= */
-  video.addEventListener("click", () => {
-    if (clickTimer) return;
-    clickTimer = setTimeout(() => { clickTimer = null; if (channels.length) togglePanel(); }, 260);
-  });
-  video.addEventListener("dblclick", () => {
-    clearTimeout(clickTimer);
-    clickTimer = null;
-    if (document.fullscreenElement) document.exitFullscreen();
-    else enterFullscreen();
-  });
-
-  /* ================= Fernbedienung / Tastatur ================= */
-  document.addEventListener("keydown", e => {
-    const onHome = !$("home").hidden;
-    if (onHome) {
-      if (e.key === "Enter" && document.activeElement !== $("playlistUrl") && document.activeElement !== $("playlistUrl2")) loadFromInput();
-      return;
-    }
-    if (["INPUT", "TEXTAREA"].includes(document.activeElement.tagName)) return;
-
-    const ok = e.key === "Enter" || e.key === "OK" || e.key === "Select";
-    const back = e.key === "Escape" || e.key === "Backspace" || e.key === "GoBack" || e.key === "BrowserBack";
-
-    if (/^[0-9]$/.test(e.key)) { pressDigit(e.key); return; }
-
-    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-      e.preventDefault();
-      const step = e.key === "ArrowDown" ? 1 : -1;
-      if (panelVisible()) setFocus(focusIndex + step);
-      else nextChannel(step);       /* ohne Liste: direkt Sender wechseln */
-      return;
-    }
-    if (ok) {
-      e.preventDefault();
-      if (panelVisible()) selectAndPlay(focusIndex);
-      else if (channels.length) showPanel(true);
-      return;
-    }
-    if (back && panelVisible()) {
-      e.preventDefault();
-      showPanel(false);             /* Zurück: Senderliste verschwindet */
-      return;
-    }
-    if (e.key === " " || e.code === "Space") { e.preventDefault(); if (video.paused) video.play().catch(() => {}); else video.pause(); return; }
-    if (e.key.toLowerCase() === "m") { video.muted = !video.muted; return; }
-    if (e.key.toLowerCase() === "f") {
-      if (document.fullscreenElement) document.exitFullscreen();
-      else enterFullscreen();
-    }
-  });
 })();
 </script>
 </body>
